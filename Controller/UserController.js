@@ -1,11 +1,8 @@
 var express = require('express');
 var router = express.Router();
-var bodyParser = require('body-parser');
+var User = require('../Model/User');
 
-router.use(bodyParser.urlencoded({ extended: true }));
-router.use(bodyParser.json());
-var User = require('./User');
-
+// POST /users/
 // CREATES A NEW USER
 router.post('/', function (req, res) {
     User.create({
@@ -19,6 +16,7 @@ router.post('/', function (req, res) {
         });
 });
 
+// GET /users/
 // RETURNS ALL THE USERS IN THE DATABASE
 router.get('/', function (req, res) {
     User.find({}, function (err, users) {
@@ -27,6 +25,7 @@ router.get('/', function (req, res) {
     });
 });
 
+// GET /users/:id
 // GETS A SINGLE USER FROM THE DATABASE
 router.get('/:id', function (req, res) {
     User.findById(req.params.id, function (err, user) {
@@ -36,6 +35,7 @@ router.get('/:id', function (req, res) {
     });
 });
 
+// DELETE /users/:id
 // DELETES A USER FROM THE DATABASE
 router.delete('/:id', function (req, res) {
     User.findByIdAndRemove(req.params.id, function (err, user) {
@@ -44,6 +44,7 @@ router.delete('/:id', function (req, res) {
     });
 });
 
+// PUT /users/:id
 // UPDATES A SINGLE USER IN THE DATABASE
 router.put('/:id', function (req, res) {
     User.findByIdAndUpdate(req.params.id, req.body, {new: true}, function (err, user) {
