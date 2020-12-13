@@ -1,6 +1,7 @@
 // imports and dependencies
 var express = require('express');
 var app = express();
+var cors = require('cors');
 const dotenv = require('dotenv');
 var bodyParser = require('body-parser');
 var moment = require('moment');
@@ -29,6 +30,23 @@ const logger = (req, res, next) => {
 app.use(logger);
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+app.use(cors());
+// to restrict origin
+// var allowedOrigins = ['http://localhost:3000',
+//                       'http://yourapp.com'];
+// app.use(cors({
+//   origin: function(origin, callback){
+//     // allow requests with no origin 
+//     // (like mobile apps or curl requests)
+//     if(!origin) return callback(null, true);
+//     if(allowedOrigins.indexOf(origin) === -1){
+//       var msg = 'The CORS policy for this site does not ' +
+//                 'allow access from the specified Origin.';
+//       return callback(new Error(msg), false);
+//     }
+//     return callback(null, true);
+//   }
+// }));
 
 // app routes
 app.use('/users', UserController);
