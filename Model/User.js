@@ -1,10 +1,53 @@
-var mongoose = require('mongoose');  
-var UserSchema = new mongoose.Schema({  
-  name: String,
-  email: String,
-  password: String
-});
+const mongoose = require('mongoose')
+const Schema = mongoose.Schema
 
-mongoose.model('User', UserSchema);
+const passportLocalMongoose = require('passport-local-mongoose')
 
-module.exports = mongoose.model('User');
+const Session = new Schema({
+  refreshToken: {
+    type: String,
+    default: ''
+  }
+})
+
+const User = new Schema({
+  firstName: {
+    type: String,
+    default: ''
+  },
+  lastName: {
+    type: String,
+    default: ''
+  },
+  email: {
+    type: String,
+    default: ''
+  },
+  username: {
+    type: String,
+    default: ''
+  },
+  authStrategy: {
+    type: String,
+    default: 'local'
+  },
+  points: {
+    type: Number,
+    default: 50
+  },
+  refreshToken: {
+    type: [Session],
+  },
+})
+
+// Remove refreshToken from the response
+User.set("toJSON", {
+  transform: function (doc, ret, options) {
+    delete ret.refreshToken
+    return ret
+  },
+})
+
+User.plugin(passportLocalMongoose)
+
+module.exports = mongoose.model("User", User)

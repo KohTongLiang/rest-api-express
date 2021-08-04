@@ -1,74 +1,146 @@
-var express = require('express');
-var router = express.Router();
-var User = require('../Model/User');
-var jwt = require('jsonwebtoken');
-var bcrypt = require('bcryptjs');
-var VerifyToken  = require('../Auth/VerifyToken');
+const express = require('express')
+const router = express.Router()
+const User = require('../Model/User')
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
+const VerifyToken  = require('../Auth/VerifyToken')
+const passport = require('passport')
 
-// POST /api/auth/register
-router.post('/register', function (req, res) {
-    var hashedPassword = bcrypt.hashSync(req.body.password, 8);
+const { getToken, COOKIE_OPTIONS, getRefreshToken, verifyUser } = require('../Auth/Authenticate')
 
-    User.create({
-        name: req.body.name,
-        email: req.body.email,
-        password: hashedPassword
-    }, function (err, user) {
-        if (err) {
-            return res.status(500).send("There was a problem registering the user.");
+router.post('/signUp', (req, res, next) => {
+    // server side field verification
+    if(!req.body.firstName || !req.body.lastName || !req.body.email || !req.body.username) {
+        res.status(500).send({
+            message: "Ensure that the registration details are filled"
+        })
+    } else {
+        User.register(
+            new User({ username: req.body.username }),
+            req.body.password,
+            (err,user) => {
+                if (err) {
+                    res.status(500).send(err)
+                } else {
+                    user.firstName = req.body.firstName
+                    user.lastName = req.body.lastName
+                    user.email = req.body.email
+                    user.username = req.body.username
+                    
+                    const token = getToken({ _id: user._id })
+                    const refreshToken = getRefreshToken({ _id: user._id })
+                    //const token = getToken(user)
+                    //const refreshToken = getRefreshToken(user)
+                    
+                    user.refreshToken.push({ refreshToken })
+                    user.save((err, user) => {
+                        if (err) {
+                            res.status(500).send(err)
+                        } else {
+                            res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS)
+                            res.send({ success: true, token })
+                        }
+                    })
+                }
+            }
+        )
+    }
+})
+
+router.post('/login', passport.authenticate('local'), (req, res, next) => {
+    const token = getToken({ _id: req.user._id })
+    const refreshToken = getRefreshToken({ _id: req.user._id })
+
+    User.findById(req.user._id).then(
+        user => {
+            user.refreshToken.push({ refreshToken })
+            user.save((err, user) => {
+                if(err) {
+                    res.statusCode(500).send(err)
+                } else {
+                    res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS)
+                    res.send({ success: true, token })
+                }
+            })
+        },
+        err => next(err)
+    )
+})
+
+router.post('/refreshToken', (req, res, next) => {
+    const { signedCookies = {} } = req
+    const { refreshToken } = signedCookies
+
+    if (refreshToken) {
+        try {
+            const payload = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
+            const userId = payload._id
+            
+            User.findOne({ _id: userId }).then(
+                user => {
+                    if (user) {
+                        const tokenIndex = user.refreshToken.findIndex(
+                            item => item.refreshToken === refreshToken
+                        )
+
+                        if (tokenIndex === -1) {
+                            res.statusCode(401).send('Unauthorized')
+                        } else {
+                            const token = getToken({ _id: userId })
+                            const newRefreshToken = getRefreshToken({ _id: userId })
+
+                            user.refreshToken = getRefreshToken({ _id: userId })
+                            user.save((err, user) => {
+                                if (err) {
+                                    res.statusCode(500).send(err)
+                                } else {
+                                    res.cookie('refreshToken', newRefreshToken, COOKIE_OPTIONS)
+                                    res.send({ success: true, token })
+                                }
+                            })
+                        }
+                    } else {
+                        res.statusCode(401).send('Unauthorized')
+                    }
+                },
+                
+                err => next(err)
+            )
+        } catch (err) {
+            res.statusCode(401).send('unauthorized')
         }
+    }
+})
 
-        // create a token
-        var token = jwt.sign({ id: user._id }, process.env.SECRET_KEY, {
-            expiresIn: 86400 // expires in 24 hours
-        });
+router.get('/logout', verifyUser, (req, res, next) => {
+    const { signedCookies = {} } = req
+    const { refreshToken } = signedCookies
 
-        res.status(200).send({ auth: true, token: token });
-    });
-});
+    User.findById(req.user._id).then(
+        user => {
+            const tokenIndex = user.refreshToken.findIndex(
+                item => item.refreshToken === refreshToken
+            )
 
-// POST /api/auth/login
-router.post('/login', function (req, res) {
-    User.findOne({ email: req.body.email }, function (err, user) {
-        if (err) {
-            return res.status(500).send('Error on the server.'); 
-        }
+            if (tokenIndex !== -1) {
+                user.refreshToken.id(user.refreshToken[tokenIndex]._id).remove()
+            }
 
-        if (!user) {
-            return res.status(401).send({ auth: false, token: null, message: 'No such user found.'});
-        }
+            user.save((err, user) => {
+                if (err) {
+                    res.statusCode(500).send(err)
+                } else {
+                    res.clearCookie('refreshToken', COOKIE_OPTIONS)
+                    res.send({ success: true })
+                }
+            })
+        },
+        err => next(err)
+    )
+})
 
-        var passwordIsValid = bcrypt.compareSync(req.body.password, user.password);
-        if (!passwordIsValid) {
-            return res.status(401).send({ auth: false, token: null, message: "Invalid password" });
-        }
-
-        var token = jwt.sign({ id: user._id }, process.env.SECRET_KEY, {
-            expiresIn: 86400 // expires in 24 hours
-        });
-
-        res.status(200).send({ auth: true, token: token });
-    });
-});
-
-// GET /api/auth/logout
-router.get('/logout', function(req, res) {
-    res.status(200).send({ auth: false, token: null });
-});
-
-// GET /api/auth/me
-router.get('/me', VerifyToken, function (req, res, next) {
-    User.findById(req.userId, { password: 0 }, function (err, user) {
-        if (err) { 
-            return res.status(500).send("There was a problem finding the user.");
-        }
-
-        if (!user) {
-            return res.status(404).send("No user found.");
-        }
-
-        res.status(200).send(user);
-    });
-});
+router.get('/me', verifyUser, (req, res, next) => {
+    res.send(req.user)
+})
 
 module.exports = router;

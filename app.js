@@ -1,24 +1,31 @@
 // imports and dependencies
-var express = require('express');
-var app = express();
-var cors = require('cors');
-const dotenv = require('dotenv');
-var bodyParser = require('body-parser');
-var moment = require('moment');
+const express = require('express')
+const app = express()
+const cors = require('cors')
+const bodyParser = require('body-parser')
+const moment = require('moment')
+const passport = require('passport')
+const cookieParser = require('cookie-parser')
 
-// import controllers
-var UserController = require('./Controller/UserController');
-var AuthController = require('./Controller/AuthController');
-var ArticleController = require('./Controller/ArticleController');
+// check node environment
+if (process.env.NODE_ENV !== 'production') {
+  const dotenv = require('dotenv');
+  dotenv.config();
+}
 
-// setup environmental variable
-dotenv.config();
+// import controllers and strategies
+const UserController = require('./Controller/UserController');
+const AuthController = require('./Controller/AuthController');
+const ArticleController = require('./Controller/ArticleController');
+require('./Strategies/JwtStrategy')
+require('./Strategies/LocalStrategy')
+require('./Auth/Authenticate')
 
 // setup connection to database
-var db = require('./db');
+const db = require('./db');
 
 // setup up scheduler
-var schedule = require('./Scheduler/Scheduler');
+const schedule = require('./Scheduler/Scheduler');
 
 // create a logger middlware to manipulate req/res
 const logger = (req, res, next) => {
@@ -30,31 +37,36 @@ const logger = (req, res, next) => {
 app.use(logger);
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
-app.use(cors());
-// to restrict origin
-// var allowedOrigins = ['http://localhost:3000',
-//                       'http://yourapp.com'];
-// app.use(cors({
-//   origin: function(origin, callback){
-//     // allow requests with no origin 
-//     // (like mobile apps or curl requests)
-//     if(!origin) return callback(null, true);
-//     if(allowedOrigins.indexOf(origin) === -1){
-//       var msg = 'The CORS policy for this site does not ' +
-//                 'allow access from the specified Origin.';
-//       return callback(new Error(msg), false);
-//     }
-//     return callback(null, true);
-//   }
-// }));
+
+// setup white list and cors options
+const whitelist = process.env.WHITELISTED_DOMAINS
+  ? process.env.WHITELISTED_DOMAINS.split(",")
+  : []
+
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || whitelist.indexOf(origin) !== -1) {
+      callback(null, true)
+    } else {
+      callback(new Error("Not allowed by CORS"))
+    }
+  },
+  credentials: true,
+}
+
+app.use(cors(corsOptions))
+//app.use(cors())
+app.use(passport.initialize())
+app.use(cookieParser("secret"));
 
 // app routes
 app.use('/users', UserController);
 app.use('/articles', ArticleController);
-app.use('/api/auth', AuthController);
+app.use('/auth', AuthController);
 
 // setup port
-var port = process.env.PORT || 3000;
+var port = process.env.PORT || 5000;
 
 
 // start the app
